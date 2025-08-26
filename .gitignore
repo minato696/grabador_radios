@@ -1,0 +1,31 @@
+# Dependencias
+node_modules/
+.pnp
+.pnp.js
+
+# Archivos de construcción
+/dist
+/build
+.next
+
+# Archivos de entorno
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# Directorios de archivos de audio (son muy grandes)
+/home/GRARADIOS/LIMA/EXITOSA/
+/home/GRARADIOS/LIMA/KARIBENA/
+/home/GRARADIOS/LIMA/KARIBEÑA/
+/home/GRARADIOS/LIMA/LAKALLE/
