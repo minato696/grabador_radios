@@ -1,5 +1,18 @@
-import React, { useState, useEffect } from 'react';
-import { Play, Pause, Download, Clock, FileAudio, ChevronLeft, ChevronRight } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { 
+  Play, 
+  Pause, 
+  Download, 
+  Clock, 
+  FileAudio, 
+  ChevronLeft, 
+  ChevronRight,
+  Check,
+  CheckSquare,
+  Square,
+  Package,
+  X
+} from 'lucide-react';
 import { CityType, RadioType, Recording } from '../types';
 import { generateMockRecordings } from '../utils/mockData';
 
@@ -19,73 +32,130 @@ const RecordingsList: React.FC<RecordingsListProps> = ({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [audioPlayer, setAudioPlayer] = useState<HTMLAudioElement | null>(null);
-  const [totalSize, setTotalSize] = useState("2.4 GB");
-  const [lastUpdate, setLastUpdate] = useState<string>("Hace 15 min");
+  const [totalSize, setTotalSize] = useState("0 B");
+  const [lastUpdate, setLastUpdate] = useState<string>("Hace 0 min");
   
-  useEffect(() => {
-    // Función para cargar grabaciones del backend
-    const fetchRecordings = async () => {
-      setLoading(true);
-      try {
-        const response = await fetch(`http://192.168.10.49:3001/api/recordings/${selectedCity}/${selectedRadio}`);
-        if (!response.ok) {
-          throw new Error(`Error ${response.status}: ${response.statusText}`);
-        }
-        const data = await response.json();
-        if (data.success) {
-          if (data.data.length > 0) {
-            setRecordings(data.data);
-            // Actualizar la información de última grabación
-            const latestRecording = data.data[0];
-            const timeDiff = new Date().getTime() - new Date(latestRecording.timestamp).getTime();
-            const minutesAgo = Math.floor(timeDiff / (1000 * 60));
-            setLastUpdate(`Hace ${minutesAgo} min`);
-          } else {
-            // No hay grabaciones, usar datos mock
-            setRecordings(generateMockRecordings(selectedCity, selectedRadio));
+  // Estados para selección múltiple
+  const [selectedRecordings, setSelectedRecordings] = useState<Set<string>>(new Set());
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState('');
+  const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Función para actualizar solo los tamaños de archivo
+  const updateFileSizes = async () => {
+    try {
+      const response = await fetch(`http://192.168.10.49:3001/api/recordings/${selectedCity}/${selectedRadio}`);
+      if (!response.ok) return;
+      
+      const data = await response.json();
+      if (data.success && data.data.length > 0) {
+        setRecordings(prevRecordings => {
+          // Actualizar tamaños existentes
+          const updatedRecordings = prevRecordings.map(recording => {
+            const updatedRecording = data.data.find((r: Recording) => r.id === recording.id);
+            if (updatedRecording) {
+              return { ...recording, fileSize: updatedRecording.fileSize };
+            }
+            return recording;
+          });
+          
+          // Agregar nuevos archivos si aparecen
+          const currentIds = new Set(prevRecordings.map(r => r.id));
+          const newRecordings = data.data.filter((r: Recording) => !currentIds.has(r.id));
+          
+          if (newRecordings.length > 0) {
+            return [...newRecordings, ...updatedRecordings];
           }
-        } else {
-          throw new Error(data.error || 'Error desconocido');
-        }
-      } catch (err) {
-        console.error('Error:', err);
-        setError(err instanceof Error ? err.message : 'Error al cargar grabaciones');
-        // Usar datos mock como fallback
-        setRecordings(generateMockRecordings(selectedCity, selectedRadio));
-      } finally {
-        setLoading(false);
+          
+          return updatedRecordings;
+        });
+        
+        // Actualizar tiempo de última actualización
+        const latestRecording = data.data[0];
+        const timeDiff = new Date().getTime() - new Date(latestRecording.timestamp).getTime();
+        const minutesAgo = Math.floor(timeDiff / (1000 * 60));
+        setLastUpdate(`Hace ${minutesAgo} min`);
       }
-    };
-    
-    // Cargar estadísticas de almacenamiento
-    const fetchStorageStats = async () => {
-      try {
-        // Intentar cargar estadísticas del backend
-        const response = await fetch('http://192.168.10.49:3001/api/recordings/stats/storage');
-        if (!response.ok) {
-          throw new Error(`Error ${response.status}: ${response.statusText}`);
-        }
-        const data = await response.json();
-        if (data.success) {
-          setTotalSize(data.data.totalSizeFormatted);
-        } else {
-          throw new Error(data.error || 'Error desconocido');
-        }
-      } catch (err) {
-        console.error('Error al cargar estadísticas:', err);
-        // Usar valor por defecto
-        setTotalSize("2.4 GB");
+    } catch (err) {
+      // Silenciar errores de actualización automática
+    }
+  };
+  
+  // Función principal de carga
+  const fetchRecordings = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch(`http://192.168.10.49:3001/api/recordings/${selectedCity}/${selectedRadio}`);
+      if (!response.ok) {
+        throw new Error(`Error ${response.status}: ${response.statusText}`);
       }
-    };
-    
+      const data = await response.json();
+      if (data.success) {
+        if (data.data.length > 0) {
+          setRecordings(data.data);
+          const latestRecording = data.data[0];
+          const timeDiff = new Date().getTime() - new Date(latestRecording.timestamp).getTime();
+          const minutesAgo = Math.floor(timeDiff / (1000 * 60));
+          setLastUpdate(`Hace ${minutesAgo} min`);
+        } else {
+          setRecordings(generateMockRecordings(selectedCity, selectedRadio));
+        }
+      } else {
+        throw new Error(data.error || 'Error desconocido');
+      }
+    } catch (err) {
+      console.error('Error:', err);
+      setError(err instanceof Error ? err.message : 'Error al cargar grabaciones');
+      setRecordings(generateMockRecordings(selectedCity, selectedRadio));
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  // Función para cargar estadísticas
+  const fetchStorageStats = async () => {
+    try {
+      const response = await fetch('http://192.168.10.49:3001/api/recordings/stats/storage');
+      if (!response.ok) {
+        throw new Error(`Error ${response.status}: ${response.statusText}`);
+      }
+      const data = await response.json();
+      if (data.success) {
+        setTotalSize(data.data.totalSizeFormatted);
+      }
+    } catch (err) {
+      console.error('Error al cargar estadísticas:', err);
+    }
+  };
+  
+  // Effect para carga inicial
+  useEffect(() => {
     fetchRecordings();
     fetchStorageStats();
     
-    // Limpiar reproductor de audio al desmontar
+    // Limpiar selecciones al cambiar de ciudad/radio
+    setSelectedRecordings(new Set());
+    setIsSelectionMode(false);
+    
     return () => {
       if (audioPlayer) {
         audioPlayer.pause();
         audioPlayer.currentTime = 0;
+      }
+    };
+  }, [selectedCity, selectedRadio]);
+  
+  // Effect para actualización automática (cada 5 segundos)
+  useEffect(() => {
+    refreshIntervalRef.current = setInterval(() => {
+      updateFileSizes();
+      fetchStorageStats();
+    }, 5000);
+    
+    return () => {
+      if (refreshIntervalRef.current) {
+        clearInterval(refreshIntervalRef.current);
       }
     };
   }, [selectedCity, selectedRadio]);
@@ -96,9 +166,139 @@ const RecordingsList: React.FC<RecordingsListProps> = ({
   const endIndex = startIndex + recordingsPerPage;
   const currentRecordings = recordings.slice(startIndex, endIndex);
 
+  // Manejar selección de grabaciones
+  const handleSelectRecording = (recordingId: string) => {
+    const newSelected = new Set(selectedRecordings);
+    if (newSelected.has(recordingId)) {
+      newSelected.delete(recordingId);
+    } else {
+      newSelected.add(recordingId);
+    }
+    setSelectedRecordings(newSelected);
+  };
+
+  // Seleccionar/Deseleccionar todos en la página actual
+  const handleSelectAll = () => {
+    const allCurrentIds = currentRecordings.map(r => r.id);
+    const allSelected = allCurrentIds.every(id => selectedRecordings.has(id));
+    
+    if (allSelected) {
+      const newSelected = new Set(selectedRecordings);
+      allCurrentIds.forEach(id => newSelected.delete(id));
+      setSelectedRecordings(newSelected);
+    } else {
+      const newSelected = new Set(selectedRecordings);
+      allCurrentIds.forEach(id => newSelected.add(id));
+      setSelectedRecordings(newSelected);
+    }
+  };
+
+  // Verificar si todos los de la página están seleccionados
+  const isAllCurrentSelected = () => {
+    if (currentRecordings.length === 0) return false;
+    return currentRecordings.every(r => selectedRecordings.has(r.id));
+  };
+
+  // Verificar si algunos están seleccionados
+  const isSomeSelected = () => {
+    return currentRecordings.some(r => selectedRecordings.has(r.id)) && !isAllCurrentSelected();
+  };
+
+  // Descargar seleccionados como ZIP
+  const handleDownloadSelectedAsZip = async () => {
+    if (selectedRecordings.size === 0) return;
+    
+    setIsDownloading(true);
+    setDownloadProgress('Preparando descarga...');
+    
+    try {
+      const selectedFiles = recordings.filter(r => selectedRecordings.has(r.id));
+      
+      const filesData = selectedFiles.map(f => ({
+        city: f.city,
+        radio: f.radioName,
+        fileName: f.fileName
+      }));
+      
+      setDownloadProgress(`Comprimiendo ${selectedFiles.length} archivos...`);
+      
+      const response = await fetch('http://192.168.10.49:3001/api/recordings/download-multiple', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ files: filesData })
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Error al descargar archivos');
+      }
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${selectedRadio}_seleccion_${new Date().getTime()}.zip`;
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      setTimeout(() => {
+        window.URL.revokeObjectURL(url);
+      }, 100);
+      
+      setDownloadProgress('¡Descarga completada!');
+      setTimeout(() => {
+        setDownloadProgress('');
+        setSelectedRecordings(new Set());
+        setIsSelectionMode(false);
+      }, 2000);
+      
+    } catch (err) {
+      console.error('Error:', err);
+      setDownloadProgress('');
+      alert(`Error al descargar archivos: ${err instanceof Error ? err.message : 'Error desconocido'}`);
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
+  // Descargar seleccionados individualmente
+  const handleDownloadSelectedIndividual = () => {
+    if (selectedRecordings.size === 0) return;
+    
+    const selectedFiles = recordings.filter(r => selectedRecordings.has(r.id));
+    
+    selectedFiles.forEach((recording, index) => {
+      setTimeout(() => {
+        const baseUrl = 'http://192.168.10.49:3001';
+        const encodedRadio = encodeURIComponent(recording.radioName.replace(/\s+/g, ''));
+        const encodedFileName = encodeURIComponent(recording.fileName);
+        const downloadUrl = `${baseUrl}/download/${recording.city}/${encodedRadio}/${encodedFileName}`;
+        
+        const iframe = document.createElement('iframe');
+        iframe.style.display = 'none';
+        iframe.src = downloadUrl;
+        document.body.appendChild(iframe);
+        
+        setTimeout(() => {
+          document.body.removeChild(iframe);
+        }, 5000);
+      }, index * 1000);
+    });
+    
+    setDownloadProgress(`Descargando ${selectedFiles.length} archivos...`);
+    setTimeout(() => {
+      setDownloadProgress('');
+      setSelectedRecordings(new Set());
+      setIsSelectionMode(false);
+    }, selectedFiles.length * 1000 + 2000);
+  };
+
   const handlePlayPause = (recording: Recording) => {
     if (playingId === recording.id) {
-      // Si ya está reproduciendo, detenerlo
       if (audioPlayer) {
         audioPlayer.pause();
         audioPlayer.currentTime = 0;
@@ -106,21 +306,15 @@ const RecordingsList: React.FC<RecordingsListProps> = ({
       setPlayingId(null);
       setAudioPlayer(null);
     } else {
-      // Si hay otro audio reproduciéndose, detenerlo
       if (audioPlayer) {
         audioPlayer.pause();
         audioPlayer.currentTime = 0;
       }
       
-      // Crear nuevo reproductor de audio con URL codificada correctamente
       const baseUrl = 'http://192.168.10.49:3001';
-      
-      // Codificar correctamente los componentes de la URL
       const encodedRadio = encodeURIComponent(recording.radioName.replace(/\s+/g, ''));
       const encodedFileName = encodeURIComponent(recording.fileName);
       const audioUrl = `${baseUrl}/audio/${recording.city}/${encodedRadio}/${encodedFileName}`;
-      
-      console.log('Intentando reproducir:', audioUrl);
       
       const newPlayer = new Audio(audioUrl);
       newPlayer.onended = () => {
@@ -130,14 +324,14 @@ const RecordingsList: React.FC<RecordingsListProps> = ({
       
       newPlayer.onerror = (e) => {
         console.error('Error al reproducir audio:', e);
-        alert('Error al reproducir el archivo de audio. El archivo podría no existir en el servidor.');
+        alert('Error al reproducir el archivo de audio.');
         setPlayingId(null);
         setAudioPlayer(null);
       };
       
       newPlayer.play().catch(err => {
         console.error('Error al iniciar reproducción:', err);
-        alert('No se puede reproducir el audio. Verifique que el archivo exista en el servidor.');
+        alert('No se puede reproducir el audio.');
         setPlayingId(null);
         setAudioPlayer(null);
       });
@@ -149,25 +343,22 @@ const RecordingsList: React.FC<RecordingsListProps> = ({
 
   const handleDownload = (recording: Recording) => {
     const baseUrl = 'http://192.168.10.49:3001';
-    
-    // Codificar correctamente los componentes de la URL
     const encodedRadio = encodeURIComponent(recording.radioName.replace(/\s+/g, ''));
     const encodedFileName = encodeURIComponent(recording.fileName);
-    const downloadUrl = `${baseUrl}/audio/${recording.city}/${encodedRadio}/${encodedFileName}`;
+    const downloadUrl = `${baseUrl}/download/${recording.city}/${encodedRadio}/${encodedFileName}`;
     
-    console.log('Iniciando descarga:', downloadUrl);
+    const iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    iframe.src = downloadUrl;
+    document.body.appendChild(iframe);
     
-    const link = document.createElement('a');
-    link.href = downloadUrl;
-    link.download = recording.fileName;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    setTimeout(() => {
+      document.body.removeChild(iframe);
+    }, 5000);
   };
 
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
-    // Detener cualquier reproducción al cambiar de página
     if (audioPlayer) {
       audioPlayer.pause();
       audioPlayer.currentTime = 0;
@@ -188,7 +379,6 @@ const RecordingsList: React.FC<RecordingsListProps> = ({
     }
   };
 
-  // Funciones de formato
   const formatDateTime = (timestamp: string) => {
     const date = new Date(timestamp);
     const day = date.getDate().toString().padStart(2, '0');
@@ -214,6 +404,65 @@ const RecordingsList: React.FC<RecordingsListProps> = ({
 
   return (
     <div className="space-y-4">
+      {/* Barra de selección múltiple */}
+      {isSelectionMode && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-center justify-between animate-fade-in">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => {
+                setIsSelectionMode(false);
+                setSelectedRecordings(new Set());
+              }}
+              className="p-2 hover:bg-blue-100 rounded-lg transition-colors"
+            >
+              <X size={20} className="text-blue-600" />
+            </button>
+            <span className="text-blue-800 font-medium">
+              {selectedRecordings.size} grabaciones seleccionadas
+            </span>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleDownloadSelectedIndividual}
+              disabled={selectedRecordings.size === 0 || isDownloading}
+              className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Download size={16} />
+              Descargar Individual ({selectedRecordings.size})
+            </button>
+            
+            <button
+              onClick={handleDownloadSelectedAsZip}
+              disabled={selectedRecordings.size === 0 || isDownloading}
+              className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isDownloading ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                  Procesando...
+                </>
+              ) : (
+                <>
+                  <Package size={16} />
+                  Descargar como ZIP
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Progreso de descarga */}
+      {downloadProgress && (
+        <div className="bg-green-50 border border-green-200 rounded-lg p-4 animate-fade-in">
+          <div className="flex items-center gap-3">
+            <div className="animate-spin rounded-full h-5 w-5 border-2 border-green-600 border-t-transparent"></div>
+            <p className="text-green-800 font-medium">{downloadProgress}</p>
+          </div>
+        </div>
+      )}
+
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <div className="bg-white p-4 rounded-lg shadow-sm border">
@@ -255,11 +504,11 @@ const RecordingsList: React.FC<RecordingsListProps> = ({
         <div className="bg-white p-4 rounded-lg shadow-sm border">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-orange-100 rounded-lg">
-              <FileAudio className="text-orange-600" size={20} />
+              <CheckSquare className="text-orange-600" size={20} />
             </div>
             <div>
-              <p className="text-sm text-gray-600">Página Actual</p>
-              <p className="text-sm font-medium text-gray-900">{currentPage} de {totalPages || 1}</p>
+              <p className="text-sm text-gray-600">Seleccionados</p>
+              <p className="text-sm font-medium text-gray-900">{selectedRecordings.size} archivos</p>
             </div>
           </div>
         </div>
@@ -267,16 +516,49 @@ const RecordingsList: React.FC<RecordingsListProps> = ({
 
       {/* Recordings Table */}
       <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200">
+        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
           <h3 className="text-lg font-semibold text-gray-900">
             Grabaciones - {selectedRadio} (Página {currentPage} de {totalPages || 1})
           </h3>
+          
+          <button
+            onClick={() => setIsSelectionMode(!isSelectionMode)}
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
+              isSelectionMode 
+                ? 'bg-blue-600 text-white' 
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            <CheckSquare size={16} />
+            {isSelectionMode ? 'Cancelar selección' : 'Seleccionar múltiples'}
+          </button>
         </div>
         
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50">
               <tr>
+                {isSelectionMode && (
+                  <th className="px-6 py-3 text-left">
+                    <button
+                      onClick={handleSelectAll}
+                      className="p-1 hover:bg-gray-200 rounded transition-colors"
+                    >
+                      {isAllCurrentSelected() ? (
+                        <CheckSquare size={18} className="text-blue-600" />
+                      ) : isSomeSelected() ? (
+                        <div className="relative">
+                          <Square size={18} className="text-gray-400" />
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <div className="w-2 h-2 bg-blue-600 rounded-sm"></div>
+                          </div>
+                        </div>
+                      ) : (
+                        <Square size={18} className="text-gray-400" />
+                      )}
+                    </button>
+                  </th>
+                )}
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Archivo
                 </th>
@@ -300,7 +582,26 @@ const RecordingsList: React.FC<RecordingsListProps> = ({
             <tbody className="bg-white divide-y divide-gray-200">
               {currentRecordings.length > 0 ? (
                 currentRecordings.map((recording) => (
-                  <tr key={recording.id} className="hover:bg-gray-50 transition-colors">
+                  <tr 
+                    key={recording.id} 
+                    className={`hover:bg-gray-50 transition-colors ${
+                      selectedRecordings.has(recording.id) ? 'bg-blue-50' : ''
+                    }`}
+                  >
+                    {isSelectionMode && (
+                      <td className="px-6 py-4">
+                        <button
+                          onClick={() => handleSelectRecording(recording.id)}
+                          className="p-1 hover:bg-gray-200 rounded transition-colors"
+                        >
+                          {selectedRecordings.has(recording.id) ? (
+                            <CheckSquare size={18} className="text-blue-600" />
+                          ) : (
+                            <Square size={18} className="text-gray-400" />
+                          )}
+                        </button>
+                      </td>
+                    )}
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-3">
                         <div className="p-2 bg-blue-100 rounded-lg">
@@ -346,13 +647,22 @@ const RecordingsList: React.FC<RecordingsListProps> = ({
                         >
                           <Download size={16} />
                         </button>
+                        {isSelectionMode && (
+                          <button
+                            onClick={() => handleSelectRecording(recording.id)}
+                            className="p-2 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors"
+                            title="Seleccionar"
+                          >
+                            <Check size={16} />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan={6} className="px-6 py-10 text-center">
+                  <td colSpan={isSelectionMode ? 7 : 6} className="px-6 py-10 text-center">
                     <FileAudio className="mx-auto h-12 w-12 text-gray-400 mb-4" />
                     <p className="text-gray-500">No hay grabaciones disponibles</p>
                   </td>
@@ -380,7 +690,6 @@ const RecordingsList: React.FC<RecordingsListProps> = ({
                 Anterior
               </button>
               
-              {/* Page Numbers */}
               <div className="flex gap-1">
                 {Array.from({ length: Math.min(5, totalPages || 1) }, (_, i) => {
                   let pageNum;
@@ -423,7 +732,6 @@ const RecordingsList: React.FC<RecordingsListProps> = ({
         )}
       </div>
 
-      {/* Error message if present */}
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4 mt-4">
           <p className="text-red-700 font-medium">Error: {error}</p>
