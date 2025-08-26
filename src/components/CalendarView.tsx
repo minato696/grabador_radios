@@ -46,10 +46,10 @@ const CalendarView: React.FC<CalendarViewProps> = ({
 
     loadRecordings();
 
-    // Configurar actualización silenciosa cada 5 segundos
+    // Configurar actualización silenciosa cada 30 segundos
     const interval = setInterval(() => {
       loadRecordings();
-    }, 5000); // 5 segundos para ver cambios más rápido
+    }, 30000); // 30 segundos
 
     // Limpiar interval al desmontar el componente
     return () => clearInterval(interval);
@@ -81,7 +81,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
     'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
   ];
 
-  const weekDays = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+  const weekDays = ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'];
 
   const previousMonth = () => {
     setCurrentDate(new Date(year, month - 1, 1));
@@ -193,240 +193,241 @@ const CalendarView: React.FC<CalendarViewProps> = ({
   };
 
   return (
-    <div className="space-y-6">
-      {/* Calendar Header */}
-      <div className="bg-slate-800 rounded-lg shadow-lg border border-slate-700 p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold text-white">
-            {monthNames[month]} {year}
-          </h2>
-          <div className="flex gap-2">
-            <button
-              onClick={previousMonth}
-              className="p-2 hover:bg-slate-700 text-white rounded-lg transition-colors"
-            >
-              <ChevronLeft size={20} />
-            </button>
-            <button
-              onClick={nextMonth}
-              className="p-2 hover:bg-slate-700 text-white rounded-lg transition-colors"
-            >
-              <ChevronRight size={20} />
-            </button>
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Calendar - Columna izquierda más pequeña */}
+      <div className="lg:col-span-1">
+        <div className="bg-slate-800 rounded-lg shadow-lg border border-slate-700 p-4">
+          {/* Calendar Header */}
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-bold text-white">
+              {monthNames[month]} {year}
+            </h2>
+            <div className="flex gap-1">
+              <button
+                onClick={previousMonth}
+                className="p-1.5 hover:bg-slate-700 text-white rounded-lg transition-colors"
+              >
+                <ChevronLeft size={18} />
+              </button>
+              <button
+                onClick={nextMonth}
+                className="p-1.5 hover:bg-slate-700 text-white rounded-lg transition-colors"
+              >
+                <ChevronRight size={18} />
+              </button>
+            </div>
+          </div>
+
+          {/* Calendar Grid más compacto */}
+          <div className="grid grid-cols-7 gap-1">
+            {/* Week days header */}
+            {weekDays.map((day) => (
+              <div key={day} className="p-1 text-center text-xs font-medium text-slate-400 uppercase">
+                {day}
+              </div>
+            ))}
+
+            {/* Calendar days */}
+            {days.map((day, index) => {
+              const uniqueKey = `${year}-${month}-${index}`;
+              
+              if (day === null) {
+                return <div key={uniqueKey} className="p-1"></div>;
+              }
+
+              const dayRecordings = getRecordingsForDay(day);
+              const hasRecordings = dayRecordings.length > 0;
+              const isSelected = selectedDay === day;
+
+              return (
+                <div
+                  key={uniqueKey}
+                  onClick={() => handleDayClick(day)}
+                  className={`min-h-[50px] p-1 rounded-md cursor-pointer transition-all duration-200 ${
+                    isSelected 
+                      ? 'bg-blue-600 border-2 border-blue-400 shadow-lg scale-105' 
+                      : isToday(day) 
+                        ? 'bg-red-600 border-2 border-red-400 hover:bg-red-700' 
+                        : hasRecordings 
+                          ? 'bg-green-600 border-2 border-green-400 hover:bg-green-700' 
+                          : 'bg-slate-700 border border-slate-600 hover:bg-slate-600'
+                  }`}
+                >
+                  <div className="text-xs font-bold text-white text-center">
+                    {day}
+                  </div>
+                  
+                  {hasRecordings && (
+                    <div className="text-center mt-1">
+                      <div className="flex items-center justify-center gap-0.5">
+                        <FileAudio size={10} className="text-white" />
+                        <span className="text-xs text-white font-medium">
+                          {dayRecordings.length}
+                        </span>
+                      </div>
+                      <div className="text-xs text-white opacity-90">
+                        archivos
+                      </div>
+                    </div>
+                  )}
+                  
+                  {isToday(day) && (
+                    <div className="text-xs text-white text-center mt-1 font-bold">
+                      HOY
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          
+          {/* Legend más compacta */}
+          <div className="flex items-center justify-center gap-3 mt-3 pt-3 border-t border-slate-600">
+            <div className="flex items-center gap-1">
+              <div className="w-3 h-3 bg-red-600 rounded border border-red-400"></div>
+              <span className="text-xs text-slate-300">Hoy</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="w-3 h-3 bg-green-600 rounded border border-green-400"></div>
+              <span className="text-xs text-slate-300">Con grabaciones</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="w-3 h-3 bg-blue-600 rounded border border-blue-400"></div>
+              <span className="text-xs text-slate-300">Seleccionado</span>
+            </div>
           </div>
         </div>
 
-        {/* Calendar Grid */}
-        <div className="grid grid-cols-7 gap-1">
-          {/* Week days header */}
-          {weekDays.map((day) => (
-            <div key={day} className="p-3 text-center text-sm font-medium text-slate-400 uppercase tracking-wider">
-              {day}
+        {/* Info box debajo del calendario */}
+        {!selectedDay && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mt-4">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-blue-100 rounded-lg">
+                <FileAudio className="text-blue-600" size={16} />
+              </div>
+              <div>
+                <p className="text-blue-800 font-medium text-sm">Selecciona un día</p>
+                <p className="text-blue-600 text-xs">Haz clic para ver grabaciones</p>
+              </div>
             </div>
-          ))}
+          </div>
+        )}
+      </div>
 
-          {/* Calendar days */}
-          {days.map((day, index) => {
-            if (day === null) {
-              return <div key={index} className="p-3"></div>;
-            }
+      {/* Selected Day Recordings Detail - Columna derecha */}
+      <div className="lg:col-span-1">
+        <div className="bg-white rounded-lg shadow-sm border h-full">
+          <div className="px-4 py-3 border-b border-gray-200">
+            <h3 className="text-lg font-semibold text-gray-900">
+              {selectedDay 
+                ? `Grabaciones del ${selectedDay} de ${monthNames[month]} - ${selectedRadio}`
+                : `Grabaciones de Hoy - ${selectedRadio}`
+              }
+            </h3>
+            {selectedDay && (
+              <p className="text-sm text-gray-600 mt-1">
+                {getSelectedDayRecordings().length} grabaciones encontradas
+              </p>
+            )}
+          </div>
+          
+          <div className="p-4 max-h-[500px] overflow-y-auto">
+            {selectedDay ? (
+              <div className="grid gap-2">
+                {getSelectedDayRecordings().length > 0 ? (
+                  getSelectedDayRecordings().map((recording) => (
+                    <div
+                      key={recording.id}
+                      className="flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => handlePlayPause(recording.id)}
+                          className="p-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                        >
+                          {playingId === recording.id ? (
+                            <Pause size={14} />
+                          ) : (
+                            <Play size={14} />
+                          )}
+                        </button>
+                        
+                        <div>
+                          <p className="font-medium text-sm text-gray-900">{recording.fileName}</p>
+                          <p className="text-xs text-gray-600">
+                            {formatTime(recording.timestamp)} · {recording.duration}
+                            {/* Temporizador de reproducción */}
+                            {playingId === recording.id && audioStates.get(recording.id) && (
+                              <span className="ml-2 text-blue-600 font-medium">
+                                · {formatDuration(audioStates.get(recording.id)!.currentTime)} / 
+                                {formatDuration(audioStates.get(recording.id)!.duration)}
+                              </span>
+                            )}
+                          </p>
+                        </div>
+                      </div>
 
-            const dayRecordings = getRecordingsForDay(day);
-            const hasRecordings = dayRecordings.length > 0;
-            const isSelected = selectedDay === day;
-
-            return (
-              <div
-                key={day}
-                onClick={() => handleDayClick(day)}
-                className={`min-h-[80px] p-2 rounded-lg cursor-pointer transition-all duration-200 ${
-                  isSelected 
-                    ? 'bg-blue-600 border-2 border-blue-400 shadow-lg' 
-                    : isToday(day) 
-                      ? 'bg-red-600 border-2 border-red-400 hover:bg-red-700' 
-                      : hasRecordings 
-                        ? 'bg-green-600 border-2 border-green-400 hover:bg-green-700' 
-                        : 'bg-slate-700 border-2 border-slate-600 hover:bg-slate-600'
-                }`}
-              >
-                <div className="text-sm font-bold mb-1 text-white text-center">
-                  {day}
-                </div>
-                
-                {hasRecordings && (
-                  <div className="text-center">
-                    <div className="flex items-center justify-center gap-1 mb-1">
-                      <FileAudio size={12} className="text-white" />
-                      <span className="text-xs text-white font-medium">
-                        {dayRecordings.length}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-500">{recording.fileSize}</span>
+                        <button 
+                          onClick={() => handleDownload(recording)}
+                          className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-100 rounded-lg transition-colors"
+                        >
+                          <Download size={14} />
+                        </button>
+                      </div>
                     </div>
-                    <div className="text-xs text-white opacity-90">
-                      archivos
-                    </div>
-                  </div>
-                )}
-                
-                {isToday(day) && (
-                  <div className="text-xs text-white text-center mt-1 font-medium">
-                    HOY
+                  ))
+                ) : (
+                  <div className="text-center py-8">
+                    <FileAudio className="mx-auto h-10 w-10 text-gray-400 mb-3" />
+                    <p className="text-gray-500 text-sm">No hay grabaciones para este día</p>
                   </div>
                 )}
               </div>
-            );
-          })}
-        </div>
-        
-        {/* Legend */}
-        <div className="flex items-center justify-center gap-6 mt-4 pt-4 border-t border-slate-600">
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-4 bg-red-600 rounded border-2 border-red-400"></div>
-            <span className="text-sm text-slate-300">Hoy</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-4 bg-green-600 rounded border-2 border-green-400"></div>
-            <span className="text-sm text-slate-300">Con grabaciones</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-4 bg-blue-600 rounded border-2 border-blue-400"></div>
-            <span className="text-sm text-slate-300">Seleccionado</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Selected Day Recordings Detail */}
-      <div className="bg-white rounded-lg shadow-sm border">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900">
-            {selectedDay 
-              ? `Grabaciones del ${selectedDay} de ${monthNames[month]} - ${selectedRadio}`
-              : `Grabaciones de Hoy - ${selectedRadio}`
-            }
-          </h3>
-          {selectedDay && (
-            <p className="text-sm text-gray-600 mt-1">
-              {getSelectedDayRecordings().length} grabaciones encontradas
-            </p>
-          )}
-        </div>
-        
-        <div className="p-6">
-          {selectedDay ? (
-            <div className="grid gap-3">
-              {getSelectedDayRecordings().length > 0 ? (
-                getSelectedDayRecordings().map((recording) => (
+            ) : (
+              <div className="grid gap-2">
+                {recordings.slice(0, 8).map((recording) => (
                   <div
                     key={recording.id}
-                    className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                    className="flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
                   >
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-3">
                       <button
                         onClick={() => handlePlayPause(recording.id)}
-                        className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                        className="p-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                       >
                         {playingId === recording.id ? (
-                          <Pause size={16} />
+                          <Pause size={14} />
                         ) : (
-                          <Play size={16} />
+                          <Play size={14} />
                         )}
                       </button>
                       
                       <div>
-                        <p className="font-medium text-gray-900">{recording.fileName}</p>
-                        <p className="text-sm text-gray-600">
+                        <p className="font-medium text-sm text-gray-900">{recording.fileName}</p>
+                        <p className="text-xs text-gray-600">
                           {formatTime(recording.timestamp)} · {recording.duration}
-                          {/* Temporizador de reproducción */}
-                          {playingId === recording.id && audioStates.get(recording.id) && (
-                            <span className="ml-2 text-blue-600 font-medium">
-                              · {formatDuration(audioStates.get(recording.id)!.currentTime)} / 
-                              {formatDuration(audioStates.get(recording.id)!.duration)}
-                            </span>
-                          )}
-                          {/* Temporizador de reproducción */}
-                          {playingId === recording.id && audioStates.get(recording.id) && (
-                            <span className="ml-2 text-blue-600 font-medium">
-                              · {formatDuration(audioStates.get(recording.id)!.currentTime)} / 
-                              {formatDuration(audioStates.get(recording.id)!.duration)}
-                            </span>
-                          )}
                         </p>
                       </div>
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <span className="text-sm text-gray-500">{recording.fileSize}</span>
+                      <span className="text-xs text-gray-500">{recording.fileSize}</span>
                       <button 
                         onClick={() => handleDownload(recording)}
-                        className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-100 rounded-lg transition-colors"
+                        className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-100 rounded-lg transition-colors"
                       >
-                        <Download size={16} />
+                        <Download size={14} />
                       </button>
                     </div>
                   </div>
-                ))
-              ) : (
-                <div className="text-center py-8">
-                  <FileAudio className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-                  <p className="text-gray-500">No hay grabaciones para este día</p>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="grid gap-3">
-              {recordings.slice(0, 8).map((recording) => (
-                <div
-                  key={recording.id}
-                  className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  <div className="flex items-center gap-4">
-                    <button
-                      onClick={() => handlePlayPause(recording.id)}
-                      className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                    >
-                      {playingId === recording.id ? (
-                        <Pause size={16} />
-                      ) : (
-                        <Play size={16} />
-                      )}
-                    </button>
-                    
-                    <div>
-                      <p className="font-medium text-gray-900">{recording.fileName}</p>
-                      <p className="text-sm text-gray-600">
-                        {formatTime(recording.timestamp)} · {recording.duration}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-500">{recording.fileSize}</span>
-                    <button 
-                      onClick={() => handleDownload(recording)}
-                      className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-100 rounded-lg transition-colors"
-                    >
-                      <Download size={16} />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-      
-      {!selectedDay && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-blue-100 rounded-lg">
-              <FileAudio className="text-blue-600" size={20} />
-            </div>
-            <div>
-              <p className="text-blue-800 font-medium">Selecciona un día en el calendario</p>
-              <p className="text-blue-600 text-sm">Haz clic en cualquier día para ver sus grabaciones específicas</p>
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 };

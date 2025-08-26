@@ -1,8 +1,10 @@
 import express from 'express';
 import { FileManager } from '../services/fileManager.js';
+import { DownloadRangeService } from '../services/downloadRange.js';
 
 const router = express.Router();
 const fileManager = new FileManager();
+const downloadService = new DownloadRangeService();
 
 // IMPORTANTE: La ruta de estadísticas debe ir ANTES de las rutas parametrizadas
 // Obtener estadísticas de almacenamiento
@@ -16,6 +18,110 @@ router.get('/stats/storage', async (req, res) => {
       success: false, 
       error: 'Error al obtener estadísticas de almacenamiento',
       details: error.message
+    });
+  }
+});
+
+// NUEVA RUTA: Descarga por rango de fecha y hora
+router.get('/download-range', async (req, res) => {
+  try {
+    const { city, radio, startDate, endDate, startTime, endTime } = req.query;
+    
+    console.log('📥 Solicitud de descarga por rango:', req.query);
+    
+    // Obtener archivos en el rango
+    const result = await downloadService.downloadRange({
+      city: city.toUpperCase(),
+      radio: radio.toUpperCase(),
+      startDate,
+      endDate,
+      startTime,
+      endTime
+    });
+    
+    if (result.files.length === 0) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'No se encontraron grabaciones en el rango especificado' 
+      });
+    }
+    
+    // Obtener estadísticas
+    const stats = downloadService.calculateStats(result.files);
+    console.log('📊 Estadísticas de descarga:', stats);
+    
+    // Configurar headers para descarga
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${result.zipFileName}"`);
+    
+    // Crear y enviar el archivo ZIP
+    const archive = downloadService.createZipStream(result.files);
+    
+    // Pipe el archivo al response
+    archive.pipe(res);
+    
+    // Log cuando termine
+    archive.on('end', () => {
+      console.log('✅ Descarga completada:', result.zipFileName);
+    });
+    
+    archive.on('error', (err) => {
+      console.error('❌ Error creando ZIP:', err);
+      if (!res.headersSent) {
+        res.status(500).json({ 
+          success: false, 
+          error: 'Error al crear archivo ZIP' 
+        });
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error en descarga por rango:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ 
+        success: false, 
+        error: error.message 
+      });
+    }
+  }
+});
+
+// NUEVA RUTA: Obtener información de archivos en un rango (preview)
+router.post('/preview-range', async (req, res) => {
+  try {
+    const { city, radio, startDate, endDate, startTime, endTime } = req.body;
+    
+    // Obtener archivos en el rango
+    const result = await downloadService.downloadRange({
+      city: city.toUpperCase(),
+      radio: radio.toUpperCase(),
+      startDate,
+      endDate,
+      startTime,
+      endTime
+    });
+    
+    // Calcular estadísticas
+    const stats = downloadService.calculateStats(result.files);
+    
+    res.json({
+      success: true,
+      data: {
+        files: result.files.map(f => ({
+          fileName: f.fileName,
+          size: downloadService.formatFileSize(f.size),
+          timestamp: f.timestamp.toISOString()
+        })),
+        stats,
+        zipFileName: result.zipFileName
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error en preview de rango:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
     });
   }
 });

@@ -7,7 +7,7 @@ export const RADIO_CONFIG = {
     },
     KARIBEÑA: {
       device: 'plughw:Pro,0',
-      outputPath: '/home/GRARADIOS/LIMA/KARIBENA',
+      outputPath: '/home/GRARADIOS/LIMA/KARIBEÑA',  // Cambiado de KARIBENA a KARIBEÑA
       name: 'KARIBEÑA'
     },
     'LA KALLE': {
