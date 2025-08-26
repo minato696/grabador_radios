@@ -7,6 +7,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
 import { recordingRoutes } from './routes/recordings.js';
+import { trimmingRoutes } from './routes/trimming.js';
 import { RecordingScheduler } from './services/recordingScheduler.js';
 import { FileManager } from './services/fileManager.js';
 
@@ -31,6 +32,7 @@ const scheduler = new RecordingScheduler(fileManager);
 
 // Rutas
 app.use('/api/recordings', recordingRoutes);
+app.use('/api/recordings', trimmingRoutes);
 
 // Ruta para servir archivos de audio
 app.get('/audio/:city/:radio/:fileName', (req, res) => {

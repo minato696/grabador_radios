@@ -11,10 +11,12 @@ import {
   CheckSquare,
   Square,
   Package,
-  X
+  X,
+  Scissors
 } from 'lucide-react';
 import { CityType, RadioType, Recording } from '../types';
 import { generateMockRecordings } from '../utils/mockData';
+import AudioTrimmer from './AudioTrimmer';
 
 interface RecordingsListProps {
   selectedCity: CityType;
@@ -41,6 +43,10 @@ const RecordingsList: React.FC<RecordingsListProps> = ({
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState('');
   const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Estado para el recortador de audio
+  const [isTrimmerOpen, setIsTrimmerOpen] = useState(false);
+  const [selectedRecordingForTrim, setSelectedRecordingForTrim] = useState<Recording | null>(null);
   
   // Función para actualizar solo los tamaños de archivo
   const updateFileSizes = async () => {
@@ -295,6 +301,40 @@ const RecordingsList: React.FC<RecordingsListProps> = ({
       setSelectedRecordings(new Set());
       setIsSelectionMode(false);
     }, selectedFiles.length * 1000 + 2000);
+  };
+
+  // Manejar apertura del recortador
+  const handleOpenTrimmer = (recording: Recording) => {
+    // Asegurarse de que la URL del audio está correcta antes de pasar el recording
+    const baseUrl = 'http://192.168.10.49:3001';
+    const cleanRadio = recording.radioName.replace(/\s+/g, '');
+    const encodedCity = encodeURIComponent(recording.city);
+    const encodedRadio = encodeURIComponent(cleanRadio);
+    const encodedFileName = encodeURIComponent(recording.fileName);
+    const audioUrl = `${baseUrl}/audio/${encodedCity}/${encodedRadio}/${encodedFileName}`;
+    
+    // Crear una copia del objeto recording con la URL actualizada
+    const recordingWithUrl = {
+      ...recording,
+      url: audioUrl
+    };
+    
+    setSelectedRecordingForTrim(recordingWithUrl);
+    setIsTrimmerOpen(true);
+    
+    // Pausar cualquier reproducción en curso
+    if (audioPlayer) {
+      audioPlayer.pause();
+      audioPlayer.currentTime = 0;
+      setPlayingId(null);
+      setAudioPlayer(null);
+    }
+  };
+  
+  // Cerrar el recortador
+  const handleCloseTrimmer = () => {
+    setIsTrimmerOpen(false);
+    setSelectedRecordingForTrim(null);
   };
 
   const handlePlayPause = (recording: Recording) => {
@@ -641,6 +681,13 @@ const RecordingsList: React.FC<RecordingsListProps> = ({
                           )}
                         </button>
                         <button
+                          onClick={() => handleOpenTrimmer(recording)}
+                          className="p-2 text-orange-600 hover:bg-orange-100 rounded-lg transition-colors"
+                          title="Recortar audio"
+                        >
+                          <Scissors size={16} />
+                        </button>
+                        <button
                           onClick={() => handleDownload(recording)}
                           className="p-2 text-green-600 hover:bg-green-100 rounded-lg transition-colors"
                           title="Descargar"
@@ -738,6 +785,13 @@ const RecordingsList: React.FC<RecordingsListProps> = ({
           <p className="text-red-600 mt-1">Mostrando datos de ejemplo temporalmente.</p>
         </div>
       )}
+      
+      {/* Componente de recorte de audio */}
+      <AudioTrimmer 
+        isOpen={isTrimmerOpen}
+        onClose={handleCloseTrimmer}
+        recording={selectedRecordingForTrim}
+      />
     </div>
   );
 };
