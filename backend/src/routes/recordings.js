@@ -149,6 +149,75 @@ router.get('/:city/:radio', async (req, res) => {
   }
 });
 
+// NUEVA RUTA: Descargar múltiples archivos seleccionados
+router.post('/download-multiple', async (req, res) => {
+  try {
+    const { files } = req.body;
+    
+    if (!files || !Array.isArray(files) || files.length === 0) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'No se proporcionaron archivos para descargar' 
+      });
+    }
+    
+    console.log(`📦 Preparando descarga de ${files.length} archivos seleccionados`);
+    
+    // Importar servicio
+    const { MultipleDownloadService } = await import('../services/multipleDownload.js');
+    const downloadService = new MultipleDownloadService();
+    
+    // Validar que los archivos existan
+    const validationResult = await downloadService.validateFiles(files);
+    
+    if (validationResult.invalidFiles.length > 0) {
+      console.warn(`⚠️ ${validationResult.invalidFiles.length} archivos no encontrados`);
+    }
+    
+    if (validationResult.validFiles.length === 0) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Ninguno de los archivos seleccionados fue encontrado' 
+      });
+    }
+    
+    // Configurar headers para descarga
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="seleccion_${new Date().toISOString().split('T')[0]}.zip"`);
+    
+    // Crear y enviar el archivo ZIP
+    const archive = await downloadService.downloadMultiple(validationResult.validFiles);
+    
+    // Pipe el archivo al response
+    archive.pipe(res);
+    
+    // Log cuando termine
+    archive.on('end', () => {
+      console.log(`✅ Descarga múltiple completada: ${validationResult.validFiles.length} archivos`);
+    });
+    
+    archive.on('error', (err) => {
+      console.error('❌ Error creando ZIP:', err);
+      if (!res.headersSent) {
+        res.status(500).json({ 
+          success: false, 
+          error: 'Error al crear archivo ZIP' 
+        });
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error en descarga múltiple:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ 
+        success: false, 
+        error: error.message || 'Error al procesar la descarga múltiple'
+      });
+    }
+  }
+});
+
+
 // Eliminar grabación
 router.delete('/:city/:radio/:fileName', async (req, res) => {
   try {
