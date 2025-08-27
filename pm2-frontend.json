@@ -1,0 +1,15 @@
+{
+  "name": "frontend grabador",
+  "script": "server.js",
+  "instances": 1,
+  "watch": false,
+  "env": {
+    "NODE_ENV": "production",
+    "PORT": 5173
+  },
+  "max_memory_restart": "500M",
+  "error_file": "logs/frontend-error.log",
+  "out_file": "logs/frontend-output.log",
+  "log_file": "logs/frontend-combined.log",
+  "time": true
+}
