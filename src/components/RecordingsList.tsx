@@ -33,7 +33,6 @@ const RecordingsList: React.FC<RecordingsListProps> = ({
   const [recordings, setRecordings] = useState<Recording[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [audioPlayer, setAudioPlayer] = useState<HTMLAudioElement | null>(null);
   const [totalSize, setTotalSize] = useState("0 B");
   const [lastUpdate, setLastUpdate] = useState<string>("Hace 0 min");
   
@@ -47,6 +46,10 @@ const RecordingsList: React.FC<RecordingsListProps> = ({
   // Estado para el recortador de audio
   const [isTrimmerOpen, setIsTrimmerOpen] = useState(false);
   const [selectedRecordingForTrim, setSelectedRecordingForTrim] = useState<Recording | null>(null);
+  
+  // Referencias para la reproducción de audio
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioCache = useRef<Map<string, string>>(new Map());
   
   // Función para actualizar solo los tamaños de archivo
   const updateFileSizes = async () => {
@@ -145,9 +148,10 @@ const RecordingsList: React.FC<RecordingsListProps> = ({
     setIsSelectionMode(false);
     
     return () => {
-      if (audioPlayer) {
-        audioPlayer.pause();
-        audioPlayer.currentTime = 0;
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.src = '';
+        audioRef.current = null;
       }
     };
   }, [selectedCity, selectedRadio]);
@@ -165,6 +169,17 @@ const RecordingsList: React.FC<RecordingsListProps> = ({
       }
     };
   }, [selectedCity, selectedRadio]);
+  
+  // Efecto para limpiar recursos de audio al desmontar
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.src = '';
+        audioRef.current = null;
+      }
+    };
+  }, []);
   
   // Calculate pagination
   const totalPages = Math.ceil(recordings.length / recordingsPerPage);
@@ -208,6 +223,79 @@ const RecordingsList: React.FC<RecordingsListProps> = ({
   // Verificar si algunos están seleccionados
   const isSomeSelected = () => {
     return currentRecordings.some(r => selectedRecordings.has(r.id)) && !isAllCurrentSelected();
+  };
+
+  // NUEVA FUNCIÓN DE REPRODUCCIÓN MEJORADA
+  const handlePlayPause = (recording: Recording) => {
+    // Si el mismo audio está sonando, lo detenemos
+    if (playingId === recording.id) {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.src = '';
+      }
+      setPlayingId(null);
+      return;
+    }
+    
+    // Construimos la URL del audio
+    let audioUrl = audioCache.current.get(recording.id);
+    
+    if (!audioUrl) {
+      const baseUrl = 'http://192.168.10.49:3001';
+      const cleanRadio = recording.radioName.replace(/\s+/g, '');
+      const encodedRadio = encodeURIComponent(cleanRadio);
+      const encodedFileName = encodeURIComponent(recording.fileName);
+      audioUrl = `${baseUrl}/audio/${recording.city}/${encodedRadio}/${encodedFileName}`;
+      audioCache.current.set(recording.id, audioUrl);
+    }
+    
+    // Si había un audio previo reproduciéndose, lo detenemos
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.src = '';
+    }
+    
+    // Crear nuevo reproductor
+    const newPlayer = new Audio();
+    
+    // Configurar manejadores de eventos antes de establecer la fuente
+    newPlayer.addEventListener('ended', () => {
+      setPlayingId(null);
+      audioRef.current = null;
+    });
+    
+    newPlayer.addEventListener('error', (e) => {
+      console.error('Error al reproducir audio:', e);
+      setPlayingId(null);
+      audioRef.current = null;
+    });
+    
+    // Cargar y reproducir el audio de manera segura
+    newPlayer.preload = 'auto';
+    newPlayer.src = audioUrl;
+    
+    // Intento de reproducción con seguridad adicional
+    const playPromise = newPlayer.play();
+    
+    if (playPromise !== undefined) {
+      playPromise
+        .then(() => {
+          // Reproducción exitosa
+          setPlayingId(recording.id);
+          audioRef.current = newPlayer;
+        })
+        .catch(err => {
+          console.error('Error al iniciar reproducción:', err);
+          
+          // Limpieza en caso de error
+          newPlayer.src = '';
+          setPlayingId(null);
+          audioRef.current = null;
+          
+          // Notificación al usuario
+          console.log('No se pudo reproducir el audio. Intente nuevamente.');
+        });
+    }
   };
 
   // Descargar seleccionados como ZIP
@@ -323,11 +411,11 @@ const RecordingsList: React.FC<RecordingsListProps> = ({
     setIsTrimmerOpen(true);
     
     // Pausar cualquier reproducción en curso
-    if (audioPlayer) {
-      audioPlayer.pause();
-      audioPlayer.currentTime = 0;
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.src = '';
       setPlayingId(null);
-      setAudioPlayer(null);
+      audioRef.current = null;
     }
   };
   
@@ -335,50 +423,6 @@ const RecordingsList: React.FC<RecordingsListProps> = ({
   const handleCloseTrimmer = () => {
     setIsTrimmerOpen(false);
     setSelectedRecordingForTrim(null);
-  };
-
-  const handlePlayPause = (recording: Recording) => {
-    if (playingId === recording.id) {
-      if (audioPlayer) {
-        audioPlayer.pause();
-        audioPlayer.currentTime = 0;
-      }
-      setPlayingId(null);
-      setAudioPlayer(null);
-    } else {
-      if (audioPlayer) {
-        audioPlayer.pause();
-        audioPlayer.currentTime = 0;
-      }
-      
-      const baseUrl = 'http://192.168.10.49:3001';
-      const encodedRadio = encodeURIComponent(recording.radioName.replace(/\s+/g, ''));
-      const encodedFileName = encodeURIComponent(recording.fileName);
-      const audioUrl = `${baseUrl}/audio/${recording.city}/${encodedRadio}/${encodedFileName}`;
-      
-      const newPlayer = new Audio(audioUrl);
-      newPlayer.onended = () => {
-        setPlayingId(null);
-        setAudioPlayer(null);
-      };
-      
-      newPlayer.onerror = (e) => {
-        console.error('Error al reproducir audio:', e);
-        alert('Error al reproducir el archivo de audio.');
-        setPlayingId(null);
-        setAudioPlayer(null);
-      };
-      
-      newPlayer.play().catch(err => {
-        console.error('Error al iniciar reproducción:', err);
-        alert('No se puede reproducir el audio.');
-        setPlayingId(null);
-        setAudioPlayer(null);
-      });
-      
-      setPlayingId(recording.id);
-      setAudioPlayer(newPlayer);
-    }
   };
 
   const handleDownload = (recording: Recording) => {
@@ -399,10 +443,10 @@ const RecordingsList: React.FC<RecordingsListProps> = ({
 
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
-    if (audioPlayer) {
-      audioPlayer.pause();
-      audioPlayer.currentTime = 0;
-      setAudioPlayer(null);
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.src = '';
+      audioRef.current = null;
       setPlayingId(null);
     }
   };
