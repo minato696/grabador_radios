@@ -237,14 +237,41 @@ export class RecordingScheduler {
     console.log(`   📝 Dispositivo: ${config.device}`);
     console.log(`   💾 Archivo: ${fileName}`);
 
-    // Construir comando ffmpeg
+    // Calcular tiempo hasta el próximo intervalo programado (XX:00 o XX:30)
+    const currentMinutes = now.getMinutes();
+    const currentSeconds = now.getSeconds();
+    
+    // Convertir todo a segundos para mayor precisión
+    const secondsToNextInterval = currentMinutes < 30 
+      ? (30 - currentMinutes) * 60 - currentSeconds
+      : (60 - currentMinutes) * 60 - currentSeconds;
+    
+    // Convertir a minutos para mostrar en logs y redondear hacia arriba
+    const minutesToNextInterval = Math.ceil(secondsToNextInterval / 60);
+    
+    // Si falta menos de la duración estándar para el próximo intervalo,
+    // ajustar la duración para que termine justo en el intervalo
+    const standardDurationSeconds = RECORDING_SCHEDULE.duration * 60;
+    const adjustedDurationSeconds = secondsToNextInterval < standardDurationSeconds 
+      ? secondsToNextInterval 
+      : standardDurationSeconds;
+    
+    const adjustedDurationMinutes = Math.ceil(adjustedDurationSeconds / 60);
+    
+    console.log(`   ⏱️ Duración: ${adjustedDurationMinutes} minutos ${
+      adjustedDurationMinutes < RECORDING_SCHEDULE.duration 
+        ? `(ajustada para terminar en el próximo intervalo XX:00/XX:30)`
+        : ''
+    }`);
+
+    // Construir comando ffmpeg con duración ajustada
     const ffmpegArgs = [
       '-f', 'alsa',
       '-i', config.device,
       '-ac', '2',
       '-af', FFMPEG_CONFIG.audioFilters,
       ...FFMPEG_CONFIG.outputOptions,
-      '-t', `${RECORDING_SCHEDULE.duration * 60}`,
+      '-t', `${adjustedDurationSeconds}`,  // Duración en segundos
       '-y',
       fullPath
     ];
@@ -326,17 +353,17 @@ export class RecordingScheduler {
       fullPath
     });
 
-    // Programar el siguiente ciclo para esta radio específica
-    setTimeout(() => {
-      console.log(`⏰ Reiniciando grabación: ${radioName}`);
-      this.startRecording(city, radioName);
-    }, RECORDING_SCHEDULE.duration * 60 * 1000);
+    // COMENTADO: No necesitamos esto ya que cron se encarga de la programación
+    // setTimeout(() => {
+    //   console.log(`⏰ Reiniciando grabación: ${radioName}`);
+    //   this.startRecording(city, radioName);
+    // }, RECORDING_SCHEDULE.duration * 60 * 1000);
 
     return {
       status: 'started',
       fileName,
       startTime: now,
-      duration: RECORDING_SCHEDULE.duration
+      duration: adjustedDurationMinutes
     };
   }
 
@@ -415,5 +442,11 @@ export class RecordingScheduler {
 
   getRecordingHistory() {
     return this.recordingHistory.slice(-20);
+  }
+
+  async forceStartRecording() {
+    console.log('\n🚀 Forzando inicio de grabaciones...');
+    await this.startScheduledRecordings();
+    return true;
   }
 }
