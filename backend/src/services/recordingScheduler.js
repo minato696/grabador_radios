@@ -28,20 +28,48 @@ export class RecordingScheduler {
     // Verificar dispositivos de audio SOLO PARA LIMA
     await this.verifyAudioDevices();
     
-    // INICIAR GRABACIÓN INMEDIATAMENTE
-    console.log('\n🚀 INICIANDO GRABACIONES DE LIMA INMEDIATAMENTE...\n');
-    await this.startScheduledRecordings();
+    // Determinar si debemos iniciar grabación inmediatamente
+    const now = new Date();
+    const currentMinutes = now.getMinutes();
+    const currentSeconds = now.getSeconds();
     
-    // Programar grabaciones cada 30 minutos
-    const cronExpression = '0,30 * * * *'; // Cada 30 minutos en punto
+    console.log(`\n🕐 Hora actual: ${now.toLocaleTimeString('es-PE')}`);
+    console.log(`   Minutos: ${currentMinutes}, Segundos: ${currentSeconds}\n`);
+    
+    // Si estamos cerca de un intervalo de grabación (dentro de los primeros 5 minutos)
+    // O si es exactamente 00 o 30 minutos, iniciamos grabación
+    if (currentMinutes === 0 || currentMinutes === 30 || 
+        (currentMinutes < 5) || (currentMinutes >= 30 && currentMinutes < 35)) {
+      console.log('🚀 INICIANDO GRABACIONES INMEDIATAMENTE (dentro del intervalo de grabación)...\n');
+      await this.startScheduledRecordings();
+    } else {
+      console.log('⏳ Esperando al próximo intervalo de grabación...\n');
+      const nextTime = this.getNextScheduledTime();
+      console.log(`⏭️ Próxima grabación: ${nextTime.toLocaleString('es-PE')}\n`);
+    }
+    
+    // Programar grabaciones cada 30 minutos EN PUNTO
+    // IMPORTANTE: El cron se ejecuta en minutos 0 y 30 de cada hora
+    const cronExpression = '0,30 * * * *'; // Minuto 0 y 30 de cada hora
+    
+    console.log('📅 Configurando cron con expresión:', cronExpression);
     
     const task = cron.schedule(cronExpression, async () => {
-      console.log('\n⏰ Ejecutando grabación programada (cada 30 minutos)');
+      const execTime = new Date();
+      console.log('\n⏰ CRON EJECUTADO:', execTime.toLocaleTimeString('es-PE'));
       await this.startScheduledRecordings();
+    }, {
+      scheduled: true,
+      timezone: "America/Lima" // Asegurar zona horaria de Lima
     });
 
     this.scheduledTasks.set('main', task);
-    console.log('✅ Sistema configurado para grabar cada 30 minutos');
+    
+    // Mostrar información de programación
+    console.log('✅ Sistema configurado para grabar:');
+    console.log('   • Cada 30 minutos (XX:00 y XX:30)');
+    console.log('   • Duración: 30 minutos por grabación');
+    console.log('   • Total: 48 grabaciones por día\n');
     
     // Mostrar próxima ejecución
     const next = this.getNextScheduledTime();
@@ -174,7 +202,7 @@ export class RecordingScheduler {
     console.log(`\n${'═'.repeat(60)}`);
     console.log(`🎵 INICIANDO GRABACIONES - SOLO LIMA`);
     console.log(`📅 ${now.toLocaleString('es-PE')}`);
-    console.log(`⏱️ Duración: ${RECORDING_SCHEDULE.duration} minutos`);
+    console.log(`⏱️ Duración: ${RECORDING_SCHEDULE.duration} minutos (fija)`);
     console.log(`${'═'.repeat(60)}\n`);
 
     let successCount = 0;
@@ -218,6 +246,7 @@ export class RecordingScheduler {
     
     // Verificar si ya hay una grabación activa
     if (this.activeRecordings.has(recordingKey)) {
+      console.log(`   ⚠️ Ya existe una grabación activa para ${radioName}`);
       return { status: 'already_active' };
     }
 
@@ -237,41 +266,19 @@ export class RecordingScheduler {
     console.log(`   📝 Dispositivo: ${config.device}`);
     console.log(`   💾 Archivo: ${fileName}`);
 
-    // Calcular tiempo hasta el próximo intervalo programado (XX:00 o XX:30)
-    const currentMinutes = now.getMinutes();
-    const currentSeconds = now.getSeconds();
+    // IMPORTANTE: Usar duración FIJA de 30 minutos
+    const durationSeconds = RECORDING_SCHEDULE.duration * 60; // 30 * 60 = 1800 segundos
     
-    // Convertir todo a segundos para mayor precisión
-    const secondsToNextInterval = currentMinutes < 30 
-      ? (30 - currentMinutes) * 60 - currentSeconds
-      : (60 - currentMinutes) * 60 - currentSeconds;
-    
-    // Convertir a minutos para mostrar en logs y redondear hacia arriba
-    const minutesToNextInterval = Math.ceil(secondsToNextInterval / 60);
-    
-    // Si falta menos de la duración estándar para el próximo intervalo,
-    // ajustar la duración para que termine justo en el intervalo
-    const standardDurationSeconds = RECORDING_SCHEDULE.duration * 60;
-    const adjustedDurationSeconds = secondsToNextInterval < standardDurationSeconds 
-      ? secondsToNextInterval 
-      : standardDurationSeconds;
-    
-    const adjustedDurationMinutes = Math.ceil(adjustedDurationSeconds / 60);
-    
-    console.log(`   ⏱️ Duración: ${adjustedDurationMinutes} minutos ${
-      adjustedDurationMinutes < RECORDING_SCHEDULE.duration 
-        ? `(ajustada para terminar en el próximo intervalo XX:00/XX:30)`
-        : ''
-    }`);
+    console.log(`   ⏱️ Duración: ${RECORDING_SCHEDULE.duration} minutos (FIJA)`);
 
-    // Construir comando ffmpeg con duración ajustada
+    // Construir comando ffmpeg con duración FIJA
     const ffmpegArgs = [
       '-f', 'alsa',
       '-i', config.device,
       '-ac', '2',
       '-af', FFMPEG_CONFIG.audioFilters,
       ...FFMPEG_CONFIG.outputOptions,
-      '-t', `${adjustedDurationSeconds}`,  // Duración en segundos
+      '-t', durationSeconds.toString(),  // Duración FIJA en segundos
       '-y',
       fullPath
     ];
@@ -305,7 +312,7 @@ export class RecordingScheduler {
         if (fs.existsSync(fullPath)) {
           const stats = fs.statSync(fullPath);
           console.log(`   📊 Tamaño: ${(stats.size / 1024 / 1024).toFixed(2)} MB`);
-          console.log(`   ⏱️ Duración: ${Math.floor(duration / 60)}:${(duration % 60).toString().padStart(2, '0')}\n`);
+          console.log(`   ⏱️ Duración real: ${Math.floor(duration / 60)}:${(duration % 60).toString().padStart(2, '0')}\n`);
         }
         
         this.recordingHistory.push({
@@ -353,17 +360,11 @@ export class RecordingScheduler {
       fullPath
     });
 
-    // COMENTADO: No necesitamos esto ya que cron se encarga de la programación
-    // setTimeout(() => {
-    //   console.log(`⏰ Reiniciando grabación: ${radioName}`);
-    //   this.startRecording(city, radioName);
-    // }, RECORDING_SCHEDULE.duration * 60 * 1000);
-
     return {
       status: 'started',
       fileName,
       startTime: now,
-      duration: adjustedDurationMinutes
+      duration: RECORDING_SCHEDULE.duration
     };
   }
 
@@ -432,8 +433,10 @@ export class RecordingScheduler {
     
     const currentMinutes = now.getMinutes();
     if (currentMinutes < 30) {
+      // Si estamos antes del minuto 30, la próxima es a los 30
       nextRun.setMinutes(30, 0, 0);
     } else {
+      // Si estamos después del minuto 30, la próxima es a las 00 de la siguiente hora
       nextRun.setHours(now.getHours() + 1, 0, 0, 0);
     }
     
