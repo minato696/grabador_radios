@@ -57,6 +57,11 @@ export class RecordingScheduler {
     const task = cron.schedule(cronExpression, async () => {
       const execTime = new Date();
       console.log('\n⏰ CRON EJECUTADO:', execTime.toLocaleTimeString('es-PE'));
+      
+      // Detener todas las grabaciones activas antes de iniciar nuevas
+      await this.stopAllRecordings();
+      
+      // Iniciar nuevas grabaciones programadas
       await this.startScheduledRecordings();
     }, {
       scheduled: true,
@@ -214,6 +219,14 @@ export class RecordingScheduler {
     for (const [radioName, config] of Object.entries(limaRadios)) {
       try {
         console.log(`🎯 Iniciando: LIMA / ${radioName}`);
+        
+        // Primero, detener cualquier grabación activa para esta radio
+        const recordingKey = `LIMA-${radioName}`;
+        if (this.activeRecordings.has(recordingKey)) {
+          console.log(`   ⚠️ Deteniendo grabación anterior para ${radioName}`);
+          await this.stopRecording('LIMA', radioName);
+        }
+        
         const result = await this.startRecording('LIMA', radioName);
         
         if (result.status === 'started') {
@@ -247,7 +260,10 @@ export class RecordingScheduler {
     // Verificar si ya hay una grabación activa
     if (this.activeRecordings.has(recordingKey)) {
       console.log(`   ⚠️ Ya existe una grabación activa para ${radioName}`);
-      return { status: 'already_active' };
+      // Detener la grabación anterior antes de iniciar una nueva
+      await this.stopRecording(city, radioName).catch(err => {
+        console.error(`   ❌ Error al detener grabación anterior: ${err.message}`);
+      });
     }
 
     const config = RADIO_CONFIG[city]?.[radioName];
@@ -360,6 +376,16 @@ export class RecordingScheduler {
       fullPath
     });
 
+    // Agregar un temporizador de seguridad para detener la grabación
+    // si continúa más allá de la duración especificada (30 minutos + 1 minuto de margen)
+    const safetyTimeout = (RECORDING_SCHEDULE.duration + 1) * 60 * 1000; // 31 minutos en milisegundos
+    setTimeout(() => {
+      if (this.activeRecordings.has(recordingKey)) {
+        console.log(`⚠️ Temporizador de seguridad activado para ${radioName}`);
+        this.stopRecording(city, radioName).catch(console.error);
+      }
+    }, safetyTimeout);
+
     return {
       status: 'started',
       fileName,
@@ -388,11 +414,14 @@ export class RecordingScheduler {
   }
 
   async stopAllRecordings() {
-    console.log('🛑 Deteniendo todas las grabaciones...');
+    console.log('🛑 Deteniendo todas las grabaciones activas...');
     
     const promises = [];
     for (const [key, recording] of this.activeRecordings.entries()) {
-      promises.push(this.stopRecording(recording.city, recording.radioName));
+      console.log(`   Deteniendo ${recording.city}/${recording.radioName}`);
+      promises.push(this.stopRecording(recording.city, recording.radioName).catch(err => {
+        console.error(`   Error al detener ${recording.radioName}: ${err.message}`);
+      }));
     }
 
     await Promise.allSettled(promises);
@@ -449,6 +478,11 @@ export class RecordingScheduler {
 
   async forceStartRecording() {
     console.log('\n🚀 Forzando inicio de grabaciones...');
+    
+    // Detener grabaciones existentes primero
+    await this.stopAllRecordings();
+    
+    // Iniciar nuevas grabaciones
     await this.startScheduledRecordings();
     return true;
   }
